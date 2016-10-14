@@ -12,15 +12,16 @@ import librosa
 import numpy as np
 import pandas as pd
 import scipy.io.wavfile
+import scipy.stats
 
 
-def write_wav(path, y, sr, norm=True, dtype='int16'):
+def _write_wav(path, y, sr, norm=True, dtype='int16'):
     if norm:
         y = y / np.max(np.abs(y))
     scipy.io.wavfile.write(path, sr, (y * (np.iinfo(dtype).max - 1)).astype(dtype))
 
 
-def dict_of_array_to_dict_of_list(d):
+def _dict_of_array_to_dict_of_list(d):
     new_dict = {}
     for k, v in d.iteritems():
         if isinstance(v, np.ndarray):
@@ -30,7 +31,7 @@ def dict_of_array_to_dict_of_list(d):
     return new_dict
 
 
-def dict_of_list_to_dict_of_array(d):
+def _dict_of_list_to_dict_of_array(d):
     new_dict = {}
     for k, v in d.iteritems():
         if isinstance(v, list):
@@ -40,7 +41,7 @@ def dict_of_list_to_dict_of_array(d):
     return new_dict
 
 
-def repeat_annotations(ann, repetitions):
+def _repeat_annotations(ann, repetitions):
     frames = [ann.data]
 
     for i in range(1, repetitions):
@@ -53,7 +54,7 @@ def repeat_annotations(ann, repetitions):
     return ann
 
 
-def rotate_annotations(ann, rotation_sec):
+def _rotate_annotations(ann, rotation_sec):
     dur = datetime.timedelta(seconds=ann.duration)
     ann.data.time += datetime.timedelta(seconds=rotation_sec)
     ann.data.ix[ann.data.time >= dur, 'time'] -= dur
@@ -61,7 +62,7 @@ def rotate_annotations(ann, rotation_sec):
     return ann
 
 
-def trim_annotations(ann, min_sec, max_sec):
+def _trim_annotations(ann, min_sec, max_sec):
     ann.data.time -= datetime.timedelta(seconds=min_sec)
     max_sec -= min_sec
     ann.data = ann.data.ix[(ann.data.time >= datetime.timedelta(seconds=0)) &
@@ -160,7 +161,7 @@ def calc_pulse_length(strat_level, tempo):
 
 
 def calc_metric_durations(strat_level, num_pulses, tempo, sample_rate):
-    '''
+    """
     Calculate the duration of a pulse and bar in seconds and samples
 
     Parameters
@@ -176,7 +177,7 @@ def calc_metric_durations(strat_level, num_pulses, tempo, sample_rate):
     pulse_length_samples : int
     bar_length_sec : float
     bar_length_samples : int
-    '''
+    """
     pulse_length_sec = calc_pulse_length(strat_level, tempo)
     pulse_length_samples = pulse_length_sec * sample_rate
     bar_length_samples = int(round(pulse_length_samples * num_pulses))
@@ -234,7 +235,7 @@ def parse_strat_level(strat_level):
     return int(divisor), dotted
 
 
-def check_strat_level_validity(ts_num, ts_denom, strat_num, strat_denom):
+def _validate_strat_level(ts_num, ts_denom, strat_num, strat_denom):
     """
     Check if the stratification level is valid for the time signature
 
@@ -255,28 +256,28 @@ def check_strat_level_validity(ts_num, ts_denom, strat_num, strat_denom):
 
     Examples
     --------
-    >>> check_strat_level_validity(3, 4, *strat_level_to_note_dur_frac(4, False))
+    >>> _validate_strat_level(3, 4, *strat_level_to_note_dur_frac(4, False))
     True
 
-    >>> check_strat_level_validity(3, 4, *strat_level_to_note_dur_frac(4, True))
+    >>> _validate_strat_level(3, 4, *strat_level_to_note_dur_frac(4, True))
     True
 
-    >>> check_strat_level_validity(3, 2, *strat_level_to_note_dur_frac(1, False))
+    >>> _validate_strat_level(3, 2, *strat_level_to_note_dur_frac(1, False))
     False
 
-    >>> check_strat_level_validity(3, 2, *strat_level_to_note_dur_frac(1, True))
+    >>> _validate_strat_level(3, 2, *strat_level_to_note_dur_frac(1, True))
     True
 
-    >>> check_strat_level_validity(3, 2, *strat_level_to_note_dur_frac(2, True))
+    >>> _validate_strat_level(3, 2, *strat_level_to_note_dur_frac(2, True))
     True
 
-    >>> check_strat_level_validity(3, 4, *strat_level_to_note_dur_frac(128, False))
+    >>> _validate_strat_level(3, 4, *strat_level_to_note_dur_frac(128, False))
     True
 
-    >>> check_strat_level_validity(16, 8, *strat_level_to_note_dur_frac(128, True))
+    >>> _validate_strat_level(16, 8, *strat_level_to_note_dur_frac(128, True))
     False
 
-    >>> check_strat_level_validity(3, 4, *strat_level_to_note_dur_frac(4, False))
+    >>> _validate_strat_level(3, 4, *strat_level_to_note_dur_frac(4, False))
     True
     """
     isvalid = ((ts_num * strat_denom) % (strat_num * ts_denom)) == 0
@@ -284,7 +285,7 @@ def check_strat_level_validity(ts_num, ts_denom, strat_num, strat_denom):
     return isvalid
 
 
-def check_meter_validity(num, denom):
+def _validate_meter(num, denom):
     """
     Make sure both ints and that denominator is 2^n
 
@@ -301,16 +302,16 @@ def check_meter_validity(num, denom):
 
     Examples
     --------
-    >>> check_meter_validity(4, 32)
+    >>> _validate_meter(4, 32)
     True
 
-    >>> check_meter_validity(4, 7)
+    >>> _validate_meter(4, 7)
     False
 
-    >>> check_meter_validity(8, 2)
+    >>> _validate_meter(8, 2)
     True
 
-    >>> check_meter_validity(8, 9)
+    >>> _validate_meter(8, 9)
     False
     """
     isvalid = isinstance(num, int) and isinstance(denom, int) and ((np.log2(denom) % 1) == 0)
@@ -386,21 +387,21 @@ def stratify(ts_num, ts_denom, strat_level):
     strat_num, strat_denom = strat_level_to_note_dur_frac(strat_divisor, strat_dotted)
 
     # check validity
-    if not check_meter_validity(ts_num, ts_denom):
+    if not _validate_meter(ts_num, ts_denom):
         raise ValueError('Invalid time signature')
 
-    if not check_strat_level_validity(ts_num, ts_denom, strat_num, strat_denom):
+    if not _validate_strat_level(ts_num, ts_denom, strat_num, strat_denom):
         raise ValueError('Invalid stratification level (`metric`)')
 
     # num pulses
     num_pulses = (ts_num * strat_denom) // (strat_num * ts_denom)
 
     # find prime factors
-    prime_factors = find_prime_factors(num_pulses)
+    prime_factors = _find_prime_factors(num_pulses)
 
     # swap 3s if numerator is divisible by 2, and there is a 3
     if ((ts_num % 2) == 0) and (3 in prime_factors):
-        num_prime_factors = find_prime_factors(ts_num)
+        num_prime_factors = _find_prime_factors(ts_num)
         count = np.sum(np.array(num_prime_factors) == 2)
 
         # swap depending on placement
@@ -415,7 +416,7 @@ def stratify(ts_num, ts_denom, strat_level):
     return prime_factors
 
 
-def find_prime_factors(n):
+def _find_prime_factors(n):
     """
     Find all the prime factors of `n`, sorted from largest to smallest
 
@@ -434,22 +435,22 @@ def find_prime_factors(n):
 
     Examples
     --------
-    >>> find_prime_factors(8)
+    >>> _find_prime_factors(8)
     [2, 2, 2]
 
-    >>> find_prime_factors(25)
+    >>> _find_prime_factors(25)
     [5, 5]
 
-    >>> find_prime_factors(26)
+    >>> _find_prime_factors(26)
     [13, 2]
 
-    >>> find_prime_factors(29)
+    >>> _find_prime_factors(29)
     [29]
 
-    >>> find_prime_factors(14)
+    >>> _find_prime_factors(14)
     [7, 2]
 
-    >>> find_prime_factors(12)
+    >>> _find_prime_factors(12)
     [3, 2, 2]
     """
     i = 2
@@ -642,7 +643,7 @@ class Sequencer(object):
     """
     A port of Sioros and Guedes's kin.sequencer Max object.
 
-    A set of ptobabilities is used to trigger stochasticaly events. A density and an exponantial factor let the user
+    A set of probabilities is used to trigger stochastic events. A density and an exponential factor let the user
     control further these probabilities. The external can also syncopate in real time by anticipating events.
 
     Attributes
@@ -660,7 +661,8 @@ class Sequencer(object):
         Controls the density of events per cycle. Zero means no events get triggered. One means maximum density, which
         depends on the input probabilities. Default is 1.
     event_var : float
-        General variation of the triggered events (e.g. calling  and the second the variation in syncopation, by anticipating different events in each cycle
+        General variation of the triggered events (e.g. calling  and the second the variation in syncopation, by
+        anticipating different events in each cycle
 
 
     """
@@ -698,12 +700,12 @@ class Sequencer(object):
         self.pattern = np.zeros(self.num_pulses)
 
         self.reset_all_scores()
-        self.rescale_weights()
-        self.calc_orig_total_prob()
-        self.calc_total_prob()
-        self.calc_prob_factor()
+        self._rescale_weights()
+        self._calc_orig_total_prob()
+        self._calc_total_prob()
+        self._calc_prob_factor()
 
-    def rescale_weights(self):
+    def _rescale_weights(self):
         """
         Rescale weights so that minimum is now 0, e.g (W - m) / (1 - m)
 
@@ -727,7 +729,7 @@ class Sequencer(object):
             self.rescaled_weights = (self.weights - self.weight_minimum) / (1.0 - self.weight_minimum)
             self.rescaled_weights = np.clip(self.rescaled_weights, 0., 1.)
 
-    def calc_orig_total_prob(self):
+    def _calc_orig_total_prob(self):
         if self.num_pulses <= 0:
             return
 
@@ -740,7 +742,7 @@ class Sequencer(object):
 
         self.orig_total_prob = total_prob
 
-    def calc_total_prob(self):
+    def _calc_total_prob(self):
         """
         Calculates the total probability of triggering a note in a whole measure
 
@@ -757,7 +759,7 @@ class Sequencer(object):
             else:  # self.weights[i] < self.MIN_PROB_VALUE
                 self.total_prob += self.MIN_PROB_VALUE**self.metric_factor
 
-    def calc_prob_factor(self):
+    def _calc_prob_factor(self):
         """
         Calculates the probability factor used in the trigger_step method
         (depends on the user controlled `density` factor)
@@ -777,7 +779,7 @@ class Sequencer(object):
         self.sync_stop_score = np.random.random([self.num_pulses, 2])
 
     @staticmethod
-    def variation_score(score, score_range):
+    def _variation_score(score, score_range):
         """
         Returns a random number between -0.5 range ~ 0.5 range
 
@@ -812,11 +814,12 @@ class Sequencer(object):
         """
         if count is not None:
             self.counter = count
-        self.scores[self.counter, 1] = self.variation_score(self.scores[self.counter, 0], self.event_var)
-        self.sync_score[self.counter, 1] = self.variation_score(self.sync_score[self.counter, 0], self.sync_var)
-        self.sync_stop_score[self.counter, 1] = self.variation_score(self.sync_stop_score[self.counter, 0], self.sync_var)
+        self.scores[self.counter, 1] = self._variation_score(self.scores[self.counter, 0], self.event_var)
+        self.sync_score[self.counter, 1] = self._variation_score(self.sync_score[self.counter, 0], self.sync_var)
+        self.sync_stop_score[self.counter, 1] = self._variation_score(self.sync_stop_score[self.counter, 0],
+                                                                      self.sync_var)
 
-        idx = self.sequential_syncopation()
+        idx = self._sequential_syncopation()
         if (idx >= 0) and (idx < self.num_pulses):
             self.outputs[self.counter] = self.step_prob(idx)
         else:
@@ -837,7 +840,7 @@ class Sequencer(object):
         else:
             self.previous_triggered = False
 
-    def sequential_syncopation(self):
+    def _sequential_syncopation(self):
         """
         Determine whether to syncopate this beat. Returns the index of the pulse to be played back applying the rules
         for sequential syncopation if a negative is return then NO trigger is forced irrelevant of index
@@ -953,7 +956,7 @@ class Sequencer(object):
         return output
 
 
-class RhythmSynthesizer(object):
+class PatternGenerator(object):
     """
     Synthesize percussive audio loops using high level parameters and specified audio sample files.
 
@@ -1011,7 +1014,7 @@ class RhythmSynthesizer(object):
         Default is None.
     sample_rate : float
         Default is 44100.
-    extended_duration : float
+    extended_duration_sec : float
         In seconds. The target duration to extend to when performing `extend_and_shift_patterns()`. Default is None.
     """
 
@@ -1081,10 +1084,10 @@ class RhythmSynthesizer(object):
 
     def _extend_default_value_list(self, attribute):
         if len(eval(attribute)) < self.num_patterns:
-            print 'Using default `%s`' % attribute
+            print('Using default `{}`'.format(attribute))
             exec '%s *= self.num_patterns' % attribute
 
-    def create_mono_pattern(self, idx):
+    def _generate_mono_pattern(self, idx):
         """
         Create the monophonic rhythm pattern of MIDI note velocities
 
@@ -1126,7 +1129,7 @@ class RhythmSynthesizer(object):
                               weight_minimum=self.weight_minimum[idx])
         output = sequencer.create_pattern()
 
-        # thresholding filters out low probability events
+        # threshold filters out low probability events
         output['beat_pattern'] *= (output['beat_pattern'] > self.threshold[idx])
 
         # base amplitude weights are calculated independently of the other metric weights controlled by density
@@ -1137,7 +1140,8 @@ class RhythmSynthesizer(object):
         amp_idxs = np.zeros(self.num_pulses[idx], dtype=int)
         for i in range(self.num_pulses[idx]):
             if random.random() > (1.0 - self.metric_factor[idx]):
-                amp_idxs[i] = np.where(weights == np.percentile(weights, random.random() * 100, interpolation='nearest'))[0][0]
+                amp_idxs[i] = np.where(weights == np.percentile(weights,
+                                                                random.random() * 100, interpolation='nearest'))[0][0]
             else:
                 amp_idxs[i] = emphasis_map[i]
         output['amp_pattern'] = amp_weights[amp_idxs]
@@ -1151,7 +1155,7 @@ class RhythmSynthesizer(object):
 
         return output
 
-    def create_poly_pattern(self):
+    def generate_pattern(self):
         """
         Create the polyphonic rhythm pattern
 
@@ -1162,7 +1166,7 @@ class RhythmSynthesizer(object):
         """
         self.patterns = []
         for i in range(self.num_patterns):
-            self.patterns.append(self.create_mono_pattern(i))
+            self.patterns.append(self._generate_mono_pattern(i))
         return self.patterns
 
     def synthesize(self,
@@ -1263,7 +1267,7 @@ class RhythmSynthesizer(object):
                                                   dynamic_range=(self.dynamic_range_low[i], self.dynamic_range_high[i]),
                                                   min_amplitude=self.min_amplitude,
                                                   mixing_coeff=mixing_coeffs[i],
-                                                  patterns=dict_of_array_to_dict_of_list(self.patterns[i]))
+                                                  patterns=_dict_of_array_to_dict_of_list(self.patterns[i]))
 
             # calculate length of a pulse in samples given tempo and sample rate for current pattern
             (pulse_length_sec,
@@ -1299,7 +1303,7 @@ class RhythmSynthesizer(object):
         if extended_duration_sec is not None:
             rhythm_audio, jam = self._extend_and_shift_patterns(rhythm_audio, extended_duration_sec, jam=jam)
 
-        write_wav(output_file, rhythm_audio, sample_rate)
+        _write_wav(output_file, rhythm_audio, sample_rate)
 
         if write_jams:
             self.jam = jam
@@ -1310,7 +1314,7 @@ class RhythmSynthesizer(object):
     def _extend_and_shift_patterns(self,
                                    x,
                                    extended_duration_sec=None,
-                                   duration_distribution=scipy.stats.truncnorm(-2,2,30,10),
+                                   duration_distribution=scipy.stats.truncnorm(-2, 2, 30, 10),
                                    shift=True,
                                    jam=None):
         """
@@ -1354,7 +1358,7 @@ class RhythmSynthesizer(object):
         if jam is not None:
             for ann in jam.annotations:
                 if ann.namespace in ['onset', 'beat']:
-                    repeat_annotations(ann, repetitions)
+                    _repeat_annotations(ann, repetitions)
 
         # shift
         if shift:
@@ -1364,14 +1368,14 @@ class RhythmSynthesizer(object):
             if jam is not None:
                 for ann in jam.annotations:
                     if ann.namespace in ['onset', 'beat']:
-                        rotate_annotations(ann, shift_samples / self.sample_rate)
+                        _rotate_annotations(ann, shift_samples / self.sample_rate)
 
         # trim
         y = y[:extended_duration_samples]
         if jam is not None:
             for ann in jam.annotations:
                 if ann.namespace in ['onset', 'beat']:
-                    trim_annotations(ann, 0, extended_duration_sec)
+                    _trim_annotations(ann, 0, extended_duration_sec)
             jam.search(namespace='tempo')[0].duration = extended_duration_sec
 
         return y, jam
@@ -1394,32 +1398,34 @@ def sort_audio_by_centroid(audio_files, sample_rate=44100):
     for af in audio_files:
         sample, _ = librosa.load(af, sample_rate, mono=True)
         centroids.append(np.median(librosa.feature.spectral_centroid(sample, sample_rate)))
-    print [audio_files[i] for i in np.argsort(centroids)]
+    print([audio_files[i] for i in np.argsort(centroids)])
 
 
-def list_audio_files_in_dir(dir, extensions=('.wav', '.mp3', '.aif', '.aiff'), with_dir=False):
+def list_audio_files_in_dir(directory, extensions=('.wav', '.mp3', '.aif', '.aiff'), prepend_path=False):
     """
     Populate a list with all of the audio files in a directory.
 
     Parameters
     ----------
-    dir : str
+    directory : str
     extensions : list of str
         The audio file extensions to search for
+    prepend_path : bool
+        Prepend the file path in front of the audio files.
     Returns
     -------
     audio_files : list of str
     """
-    audio_files = [f for f in os.listdir(dir) if os.path.splitext(f)[1] in extensions]
+    audio_files = [f for f in os.listdir(directory) if os.path.splitext(f)[1] in extensions]
 
-    if with_dir:
+    if prepend_path:
         audio_files = [os.path.join(dir, f) for f in audio_files]
 
     return audio_files
 
 
 def load_synth_from_jams(jams_file):
-    '''
+    """
     Load a pattern from a JAMS file and instantiate the RhythmSynthesizer
 
     Parameters
@@ -1429,7 +1435,7 @@ def load_synth_from_jams(jams_file):
     Returns
     -------
     rhythm_synth : RhythmSynthesizer
-    '''
+    """
     jam = jams.load(jams_file)
 
     pattern1 = jam.search(pattern_index=0)[0]
@@ -1462,26 +1468,26 @@ def load_synth_from_jams(jams_file):
         dynamic_range_low.append(onset_ann.sandbox.dynamic_range[0])
         dynamic_range_high.append(onset_ann.sandbox.dynamic_range[1])
         mixing_coeffs.append(onset_ann.sandbox.mixing_coeff)
-        patterns.append(dict_of_list_to_dict_of_array(onset_ann.sandbox.patterns))
+        patterns.append(_dict_of_list_to_dict_of_array(onset_ann.sandbox.patterns))
         audio_files.append(onset_ann.sandbox.audio_source)
 
-    rhythm_synth = RhythmSynthesizer(ts_num=ts_num,
-                                     ts_denom=ts_denom,
-                                     num_patterns=num_patterns,
-                                     strat_level=strat_level,
-                                     metric_factor=metric_factor,
-                                     syncopate_factor=syncopate_factor,
-                                     density=density,
-                                     threshold=threshold,
-                                     weight_minimum=weight_minimum,
-                                     dynamic_range_low=dynamic_range_low,
-                                     dynamic_range_high=dynamic_range_high,
-                                     min_amplitude=min_amplitude,
-                                     tempo=tempo,
-                                     sample_rate=sample_rate,
-                                     jam=jam,
-                                     mixing_coeffs=mixing_coeffs,
-                                     patterns=patterns,
-                                     audio_files=audio_files)
+    rhythm_synth = PatternGenerator(ts_num=ts_num,
+                                    ts_denom=ts_denom,
+                                    num_patterns=num_patterns,
+                                    strat_level=strat_level,
+                                    metric_factor=metric_factor,
+                                    syncopate_factor=syncopate_factor,
+                                    density=density,
+                                    threshold=threshold,
+                                    weight_minimum=weight_minimum,
+                                    dynamic_range_low=dynamic_range_low,
+                                    dynamic_range_high=dynamic_range_high,
+                                    min_amplitude=min_amplitude,
+                                    tempo=tempo,
+                                    sample_rate=sample_rate,
+                                    jam=jam,
+                                    mixing_coeffs=mixing_coeffs,
+                                    patterns=patterns,
+                                    audio_files=audio_files)
 
     return rhythm_synth
