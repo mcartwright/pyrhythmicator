@@ -95,6 +95,49 @@ def _trim_annotations(ann, min_sec, max_sec):
     return ann
 
 
+def sort_audio_by_centroid(audio_files, sample_rate=44100):
+    """
+    Sort audio files by centroid so we know how to functionally order them
+
+    Parameters
+    ----------
+    audio_files
+    sample_rate
+
+    Returns
+    -------
+    None
+    """
+    centroids = []
+    for af in audio_files:
+        sample, _ = librosa.load(af, sample_rate, mono=True)
+        centroids.append(np.median(librosa.feature.spectral_centroid(sample, sample_rate)))
+    print([audio_files[i] for i in np.argsort(centroids)])
+
+
+def list_audio_files_in_dir(directory, extensions=('.wav', '.mp3', '.aif', '.aiff'), prepend_path=False):
+    """
+    Populate a list with all of the audio files in a directory.
+
+    Parameters
+    ----------
+    directory : str
+    extensions : list[str]
+        The audio file extensions to search for
+    prepend_path : bool
+        Prepend the file path in front of the audio files.
+    Returns
+    -------
+    audio_files : list[str]
+    """
+    audio_files = [f for f in os.listdir(directory) if os.path.splitext(f)[1] in extensions]
+
+    if prepend_path:
+        audio_files = [os.path.join(dir, f) for f in audio_files]
+
+    return audio_files
+
+
 def strat_level_to_note_dur_frac(divisor, dotted):
     """
     Return the numerator and denominator of pulse length (in whole notes)
@@ -1484,45 +1527,3 @@ class PatternGenerator(object):
 
         return y, jam
 
-
-def sort_audio_by_centroid(audio_files, sample_rate=44100):
-    """
-    Sort audio files by centroid so we know how to functionally order them
-
-    Parameters
-    ----------
-    audio_files
-    sample_rate
-
-    Returns
-    -------
-    None
-    """
-    centroids = []
-    for af in audio_files:
-        sample, _ = librosa.load(af, sample_rate, mono=True)
-        centroids.append(np.median(librosa.feature.spectral_centroid(sample, sample_rate)))
-    print([audio_files[i] for i in np.argsort(centroids)])
-
-
-def list_audio_files_in_dir(directory, extensions=('.wav', '.mp3', '.aif', '.aiff'), prepend_path=False):
-    """
-    Populate a list with all of the audio files in a directory.
-
-    Parameters
-    ----------
-    directory : str
-    extensions : list[str]
-        The audio file extensions to search for
-    prepend_path : bool
-        Prepend the file path in front of the audio files.
-    Returns
-    -------
-    audio_files : list[str]
-    """
-    audio_files = [f for f in os.listdir(directory) if os.path.splitext(f)[1] in extensions]
-
-    if prepend_path:
-        audio_files = [os.path.join(dir, f) for f in audio_files]
-
-    return audio_files
