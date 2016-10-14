@@ -14,6 +14,8 @@ import pandas as pd
 import scipy.io.wavfile
 import scipy.stats
 
+from .pyrhythmicator_exceptions import PyrhythmicatorError
+
 
 def _write_wav(path, y, sr, norm=True, dtype='int16'):
     if norm:
@@ -117,8 +119,11 @@ def log_to_linear_amp(x, arange=(-48., 0.)):
     >>> log_to_linear_amp(np.array([1.]))
     array([ 1.])
 
-    >>> log_to_linear_amp(np.array([0.5]))
-    array([1.])
+    >>> log_to_linear_amp(np.array([0.5]), arange=(-6., 0.))
+    array([ 0.70794578])
+
+    >>> log_to_linear_amp(np.array([0.]), arange=(-6., 0.))
+    array([ 0.])
     """
     x_linear = x * (arange[1] - arange[0]) + arange[0]
     x_linear = (10.0**(x_linear/20.)) * (x > 0.)  # make sure 0 is still 0
@@ -198,6 +203,11 @@ def parse_strat_level(strat_level):
     divisor : int
     dotted : bool
 
+    Raises
+    ------
+    PyrhythmicatorError
+        If `strat_level` is not in the valid form.
+
     Examples
     --------
     >>> parse_strat_level('128nd')
@@ -219,7 +229,7 @@ def parse_strat_level(strat_level):
     pat = "^([0-9]+)([n,d]+)$"
     match = re.match(pat, strat_level)
     if match is None:
-        raise ValueError('Argument `level` is an invalid form')
+        raise PyrhythmicatorError('Argument `strat_level` is an invalid form')
 
     divisor = match.group(1)
     if match.group(2) == 'nd':
@@ -227,10 +237,10 @@ def parse_strat_level(strat_level):
     elif match.group(2) == 'n':
         dotted = False
     else:
-        raise ValueError('Argument `level` is an invalid form')
+        raise PyrhythmicatorError('Argument `strat_level` is an invalid form')
 
     if divisor not in ('1', '2', '4', '8', '16', '32', '64', '128'):
-        raise ValueError('Argument `level` is an invalid form')
+        raise PyrhythmicatorError('Argument `strat_level` is an invalid form')
 
     return int(divisor), dotted
 
@@ -338,6 +348,11 @@ def stratify(ts_num, ts_denom, strat_level):
     prime_factors : list of int
         List of prime numbers that describes how each metrical level divides the previous one.
 
+    Raises
+    ------
+    PyrhythmicatorError
+        If `strat_level` is invalid. Or if the meter (`ts_num` and `ts_denom`) is invalid.
+
     Examples
     --------
     >>> stratify(3, 4, '32n')
@@ -388,10 +403,10 @@ def stratify(ts_num, ts_denom, strat_level):
 
     # check validity
     if not _validate_meter(ts_num, ts_denom):
-        raise ValueError('Invalid time signature')
+        raise PyrhythmicatorError('Invalid time signature')
 
     if not _validate_strat_level(ts_num, ts_denom, strat_num, strat_denom):
-        raise ValueError('Invalid stratification level (`metric`)')
+        raise PyrhythmicatorError('Invalid stratification level (`strat_level`)')
 
     # num pulses
     num_pulses = (ts_num * strat_denom) // (strat_num * ts_denom)
