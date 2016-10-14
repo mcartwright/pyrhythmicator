@@ -1117,6 +1117,75 @@ class PatternGenerator(object):
         if self.mixing_coeffs is None:
             self.mixing_coeffs = np.ones(self.num_patterns) / self.num_patterns
 
+    @classmethod
+    def from_jams(cls, jams_file_path):
+        """
+        Load a pattern from a JAMS file and instantiate the RhythmSynthesizer
+
+        Parameters
+        ----------
+        jams_file
+
+        Returns
+        -------
+        rhythm_synth : RhythmSynthesizer
+        """
+        jam = jams.load(jams_file_path)
+
+        pattern1 = jam.search(pattern_index=0)[0]
+        ts_num = pattern1.sandbox.time_signature[0]
+        ts_denom = pattern1.sandbox.time_signature[1]
+        num_patterns = len(jam.search(namespace='onset'))
+        tempo = jam.search(namespace='tempo')[0].data.value[0]
+        sample_rate = jam.sandbox.sample_rate
+        strat_level = []
+        metric_factor = []
+        syncopate_factor = []
+        density = []
+        threshold = []
+        weight_minimum = []
+        dynamic_range_low = []
+        dynamic_range_high = []
+        min_amplitude = pattern1.sandbox.min_amplitude
+        mixing_coeffs = []
+        patterns = []
+        audio_files = []
+
+        for i in range(num_patterns):
+            onset_ann = jam.search(pattern_index=i)[0]
+            strat_level.append(onset_ann.sandbox.strat_level)
+            metric_factor.append(onset_ann.sandbox.metric_factor)
+            syncopate_factor.append(onset_ann.sandbox.syncopate_factor)
+            density.append(onset_ann.sandbox.density)
+            threshold.append(onset_ann.sandbox.threshold)
+            weight_minimum.append(onset_ann.sandbox.weight_minimum)
+            dynamic_range_low.append(onset_ann.sandbox.dynamic_range[0])
+            dynamic_range_high.append(onset_ann.sandbox.dynamic_range[1])
+            mixing_coeffs.append(onset_ann.sandbox.mixing_coeff)
+            patterns.append(_dict_of_list_to_dict_of_array(onset_ann.sandbox.patterns))
+            audio_files.append(onset_ann.sandbox.audio_source)
+
+        pattern_genr = PatternGenerator(ts_num=ts_num,
+                                        ts_denom=ts_denom,
+                                        num_patterns=num_patterns,
+                                        strat_level=strat_level,
+                                        metric_factor=metric_factor,
+                                        syncopate_factor=syncopate_factor,
+                                        density=density,
+                                        threshold=threshold,
+                                        weight_minimum=weight_minimum,
+                                        dynamic_range_low=dynamic_range_low,
+                                        dynamic_range_high=dynamic_range_high,
+                                        min_amplitude=min_amplitude,
+                                        tempo=tempo,
+                                        sample_rate=sample_rate,
+                                        jam=jam,
+                                        mixing_coeffs=mixing_coeffs,
+                                        patterns=patterns,
+                                        audio_files=audio_files)
+
+        return pattern_genr
+
     def _extend_default_value_list(self, attribute):
         if len(eval(attribute)) < self.num_patterns:
             print('Using default `{}`'.format(attribute))
@@ -1457,72 +1526,3 @@ def list_audio_files_in_dir(directory, extensions=('.wav', '.mp3', '.aif', '.aif
         audio_files = [os.path.join(dir, f) for f in audio_files]
 
     return audio_files
-
-
-def load_synth_from_jams(jams_file):
-    """
-    Load a pattern from a JAMS file and instantiate the RhythmSynthesizer
-
-    Parameters
-    ----------
-    jams_file
-
-    Returns
-    -------
-    rhythm_synth : RhythmSynthesizer
-    """
-    jam = jams.load(jams_file)
-
-    pattern1 = jam.search(pattern_index=0)[0]
-    ts_num = pattern1.sandbox.time_signature[0]
-    ts_denom = pattern1.sandbox.time_signature[1]
-    num_patterns = len(jam.search(namespace='onset'))
-    tempo = jam.search(namespace='tempo')[0].data.value[0]
-    sample_rate = jam.sandbox.sample_rate
-    strat_level = []
-    metric_factor = []
-    syncopate_factor = []
-    density = []
-    threshold = []
-    weight_minimum = []
-    dynamic_range_low = []
-    dynamic_range_high = []
-    min_amplitude = pattern1.sandbox.min_amplitude
-    mixing_coeffs = []
-    patterns = []
-    audio_files = []
-
-    for i in range(num_patterns):
-        onset_ann = jam.search(pattern_index=i)[0]
-        strat_level.append(onset_ann.sandbox.strat_level)
-        metric_factor.append(onset_ann.sandbox.metric_factor)
-        syncopate_factor.append(onset_ann.sandbox.syncopate_factor)
-        density.append(onset_ann.sandbox.density)
-        threshold.append(onset_ann.sandbox.threshold)
-        weight_minimum.append(onset_ann.sandbox.weight_minimum)
-        dynamic_range_low.append(onset_ann.sandbox.dynamic_range[0])
-        dynamic_range_high.append(onset_ann.sandbox.dynamic_range[1])
-        mixing_coeffs.append(onset_ann.sandbox.mixing_coeff)
-        patterns.append(_dict_of_list_to_dict_of_array(onset_ann.sandbox.patterns))
-        audio_files.append(onset_ann.sandbox.audio_source)
-
-    rhythm_synth = PatternGenerator(ts_num=ts_num,
-                                    ts_denom=ts_denom,
-                                    num_patterns=num_patterns,
-                                    strat_level=strat_level,
-                                    metric_factor=metric_factor,
-                                    syncopate_factor=syncopate_factor,
-                                    density=density,
-                                    threshold=threshold,
-                                    weight_minimum=weight_minimum,
-                                    dynamic_range_low=dynamic_range_low,
-                                    dynamic_range_high=dynamic_range_high,
-                                    min_amplitude=min_amplitude,
-                                    tempo=tempo,
-                                    sample_rate=sample_rate,
-                                    jam=jam,
-                                    mixing_coeffs=mixing_coeffs,
-                                    patterns=patterns,
-                                    audio_files=audio_files)
-
-    return rhythm_synth
