@@ -17,15 +17,34 @@ import scipy.stats
 from .pyrhythmicator_exceptions import PyrhythmicatorError
 
 
-def _write_wav(path, y, sr, norm=True, dtype='int16'):
+def _write_wav(path, y, sample_rate, norm=True, dtype='int16'):
+    """
+    Write .wav file to disk.
+
+    Parameters
+    ----------
+    path : str
+        File path to write wav file
+    y : np.array
+        Audio signal array
+    sample_rate : float
+    norm : bool
+        Peak-normalize `y` before writing to disk.
+    dtype : str
+        This numpy array type will dictate what the sample format of the audio file is.
+
+    Returns
+    -------
+    None
+    """
     if norm:
-        y = y / np.max(np.abs(y))
-    scipy.io.wavfile.write(path, sr, (y * (np.iinfo(dtype).max - 1)).astype(dtype))
+        y /= np.max(np.abs(y))
+    scipy.io.wavfile.write(path, sample_rate, np.array((y * (np.iinfo(dtype).max - 1))).astype(dtype))
 
 
 def _dict_of_array_to_dict_of_list(d):
     new_dict = {}
-    for k, v in d.iteritems():
+    for k, v in d.items():
         if isinstance(v, np.ndarray):
             new_dict[k] = v.tolist()
         else:
@@ -35,7 +54,7 @@ def _dict_of_array_to_dict_of_list(d):
 
 def _dict_of_list_to_dict_of_array(d):
     new_dict = {}
-    for k, v in d.iteritems():
+    for k, v in d.items():
         if isinstance(v, list):
             new_dict[k] = np.array(v)
         else:
@@ -51,7 +70,8 @@ def _repeat_annotations(ann, repetitions):
         frame.time += datetime.timedelta(seconds=(ann.duration * i))
         frames.append(frame)
 
-    ann.data = jams.JamsFrame.from_dataframe(pd.concat(frames))
+    frame = pd.DataFrame(pd.concat(frames))
+    ann.data = jams.JamsFrame.from_dataframe(frame)
     ann.duration *= repetitions
     return ann
 
@@ -106,7 +126,7 @@ def log_to_linear_amp(x, arange=(-48., 0.)):
     ----------
     x : np.array
         Input signal that ranges from 0. to 1.
-    arange : list of float
+    arange : tuple[float]
         The range of the input in dB
 
     Returns
@@ -345,7 +365,7 @@ def stratify(ts_num, ts_denom, strat_level):
 
     Returns
     -------
-    prime_factors : list of int
+    prime_factors : list[int]
         List of prime numbers that describes how each metrical level divides the previous one.
 
     Raises
@@ -442,7 +462,7 @@ def _find_prime_factors(n):
 
     Returns
     -------
-    factors : list of int
+    factors : list[int]
 
     Notes
     -----
@@ -524,7 +544,7 @@ def calc_indispensabilities(num_pulses, num_levels, prime_factors):
     ----------
     num_pulses : int
     num_levels : int
-    prime_factors : list of int
+    prime_factors : list[int]
 
     Returns
     -------
@@ -983,34 +1003,34 @@ class PatternGenerator(object):
         Time signature denominator
     num_patterns : int
         The number of layered rhythm patterns to synthesize.
-    strat_level : list of str
+    strat_level : list[str]
         Stratification level (pulse/tatum) of each pattern, e.g. '8n' for eigth-note, '4nd' for dotted quarter note.
         Up to '128'
-    metric_factor : list of float
+    metric_factor : list[float]
         How metrical the rhythm is for each pattern (0. = not metrical at all, 1. = very metrical)
         Default is (1.0,)
-    syncopate_factor : list of float
+    syncopate_factor : list[float]
         How syncopated the rhythm is for each pattern (0. = not syncopated at all, 1. = very syncopated).
         Default is (0.0,)
-    density : list of float
+    density : list[float]
         How dense the rhythm is for each pattern, e.g. the number of events per beat. (0. = not dense, 1. = very dense)
         Default is (1.0,)
-    event_var : list of float
+    event_var : list[float]
         The event variation for each pattern. *This is not really used now since each pattern is generated from scratch
         rather than evolving from an existing pattern*
         Default is (1.0,)
-    sync_var : list of float
+    sync_var : list[float]
         The sync variation for each pattern. *This is not really used now since each pattern is generated from scratch
         rather than evolving from an existing pattern*
         Default is (1.0,)
-    threshold : list of float
+    threshold : list[float]
         Filters out low probability events. (0 - 1)
         Default is (0.0,)
-    weight_minimum : list of float
+    weight_minimum : list[float]
         The minimum weight for rescaling, making events more probable. *Not used in kin.rhythmicator*
-    dynamic_range_low : list of float
+    dynamic_range_low : list[float]
         The low end of the range to which to rescale the amplitudes of the rhythm. Default is (0.,)
-    dynamic_range_high : list of float
+    dynamic_range_high : list[float]
         The high end of the range to which to rescale the amplitudes of the rhythm. Default is (1.,)
     min_amplitude : float
         The minimum amplitude of an onset in dB. Default is -48.
@@ -1019,12 +1039,12 @@ class PatternGenerator(object):
         is 120
     jam : jams.JAM()
         The JAMS annotations for the current pattern. Default is None.
-    mixing_coeffs : list of float
+    mixing_coeffs : list[float]
         Mixing coefficients that determine the relative level for each synthesized pattern. Default is None.
-    patterns : dict of lists
+    patterns : dict[str,list]
         The generated patterns. Can also be based in at initialization time (e.g., if created from a JAMS file)
         Default is None.
-    audio_files : list of str
+    audio_files : list[str]
         The audio files used to synthesized the patterns in their respective order by pattern.
         Default is None.
     sample_rate : float
@@ -1176,7 +1196,7 @@ class PatternGenerator(object):
 
         Returns
         -------
-        patterns : list of dicts
+        patterns : list[dict]
             List of dicts of generated pattern arrays
         """
         self.patterns = []
@@ -1200,7 +1220,7 @@ class PatternGenerator(object):
         ----------
         output_file : str
             The path where the rendered and mixed output signal will be written
-        audio_files : list of str
+        audio_files : list[str]
             A list of the audio_files to use for rendering the rhythm patterns. These should be ordered according to the
             pattern (e.g., if the patterns were constructed to be from low frequency to high frequency, a bass drum
             might be first in the list)
@@ -1423,13 +1443,13 @@ def list_audio_files_in_dir(directory, extensions=('.wav', '.mp3', '.aif', '.aif
     Parameters
     ----------
     directory : str
-    extensions : list of str
+    extensions : list[str]
         The audio file extensions to search for
     prepend_path : bool
         Prepend the file path in front of the audio files.
     Returns
     -------
-    audio_files : list of str
+    audio_files : list[str]
     """
     audio_files = [f for f in os.listdir(directory) if os.path.splitext(f)[1] in extensions]
 
