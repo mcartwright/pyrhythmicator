@@ -14,7 +14,7 @@ import pandas as pd
 import scipy.io.wavfile
 import scipy.stats
 
-from .pyrhythmicator_exceptions import PyrhythmicatorError
+from pyrhythmicator_exceptions import PyrhythmicatorError
 
 
 def _write_wav(path, y, sample_rate, norm=True, dtype='int16'):
@@ -70,7 +70,7 @@ def _repeat_annotations(ann, repetitions):
         frame.time += datetime.timedelta(seconds=(ann.duration * i))
         frames.append(frame)
 
-    frame = pd.DataFrame(pd.concat(frames))
+    frame = pd.DataFrame(pd.concat(frames, ignore_index=True))
     ann.data = jams.JamsFrame.from_dataframe(frame)
     ann.duration *= repetitions
     return ann
@@ -80,7 +80,7 @@ def _rotate_annotations(ann, rotation_sec):
     dur = datetime.timedelta(seconds=ann.duration)
     ann.data.time += datetime.timedelta(seconds=rotation_sec)
     ann.data.ix[ann.data.time >= dur, 'time'] -= dur
-    ann.data = jams.JamsFrame.from_dataframe(ann.data.sort('time'))
+    ann.data = jams.JamsFrame.from_dataframe(ann.data.sort_values('time').reset_index(drop=True))
     return ann
 
 
@@ -89,7 +89,7 @@ def _trim_annotations(ann, min_sec, max_sec):
     max_sec -= min_sec
     ann.data = ann.data.ix[(ann.data.time >= datetime.timedelta(seconds=0)) &
                            (ann.data.time <= datetime.timedelta(seconds=max_sec))]
-    dur = max(max_sec - min_sec, ann.data.time.max().seconds)
+    dur = max(max_sec - min_sec, ann.data.time.max().total_seconds())
     ann.duration = dur
     ann.data = jams.JamsFrame.from_dataframe(ann.data)
     return ann
@@ -133,7 +133,7 @@ def list_audio_files_in_dir(directory, extensions=('.wav', '.mp3', '.aif', '.aif
     audio_files = [f for f in os.listdir(directory) if os.path.splitext(f)[1] in extensions]
 
     if prepend_path:
-        audio_files = [os.path.join(dir, f) for f in audio_files]
+        audio_files = [os.path.join(directory, f) for f in audio_files]
 
     return audio_files
 
@@ -187,6 +187,9 @@ def log_to_linear_amp(x, arange=(-48., 0.)):
 
     >>> log_to_linear_amp(np.array([0.]), arange=(-6., 0.))
     array([ 0.])
+
+    >>> log_to_linear_amp(0., arange=(-6., 0.))
+    0.0
     """
     x_linear = x * (arange[1] - arange[0]) + arange[0]
     x_linear = (10.0**(x_linear/20.)) * (x > 0.)  # make sure 0 is still 0
@@ -773,7 +776,7 @@ class Sequencer(object):
         self.counter = 0
         self.sync_count = 0
         self.previous_triggered = False
-        self.sync_direction = np.zeros(self.num_pulses)
+        self.sync_direction = np.zeros(self.num_pulses, dtype='int')
         self.outputs = np.zeros(self.num_pulses)
         self.pattern = np.zeros(self.num_pulses)
 
@@ -1038,14 +1041,17 @@ class PatternGenerator(object):
     """
     Synthesize percussive audio loops using high level parameters and specified audio sample files.
 
+    Examples
+    --------
+    >>> pat_gen = PatternGenerator(4, 4, '16n')
+    >>> pat_gen.synthesize('output_file.wav', audio_files=['../test/data/01_kick.wav','../test/data/02.snare.wav'])
+
     Attributes
     ----------
     ts_num : int
         Time signature numerator
     ts_denom : int
         Time signature denominator
-    num_patterns : int
-        The number of layered rhythm patterns to synthesize.
     strat_level : list[str]
         Stratification level (pulse/tatum) of each pattern, e.g. '8n' for eigth-note, '4nd' for dotted quarter note.
         Up to '128'
@@ -1075,31 +1081,11 @@ class PatternGenerator(object):
         The low end of the range to which to rescale the amplitudes of the rhythm. Default is (0.,)
     dynamic_range_high : list[float]
         The high end of the range to which to rescale the amplitudes of the rhythm. Default is (1.,)
-    min_amplitude : float
-        The minimum amplitude of an onset in dB. Default is -48.
-    tempo : float
-        The tempo which should be used during synthesis (can also be overwritten when calling `synthesize()`). Default
-        is 120
-    jam : jams.JAM()
-        The JAMS annotations for the current pattern. Default is None.
-    mixing_coeffs : list[float]
-        Mixing coefficients that determine the relative level for each synthesized pattern. Default is None.
-    patterns : dict[str,list]
-        The generated patterns. Can also be based in at initialization time (e.g., if created from a JAMS file)
-        Default is None.
-    audio_files : list[str]
-        The audio files used to synthesized the patterns in their respective order by pattern.
-        Default is None.
-    sample_rate : float
-        Default is 44100.
-    extended_duration_sec : float
-        In seconds. The target duration to extend to when performing `extend_and_shift_patterns()`. Default is None.
     """
 
     def __init__(self,
                  ts_num,
                  ts_denom,
-                 num_patterns,
                  strat_level,
                  metric_factor=(1.0,),
                  syncopate_factor=(0.0,),
@@ -1109,19 +1095,10 @@ class PatternGenerator(object):
                  threshold=(0.,),
                  weight_minimum=(0,),
                  dynamic_range_low=(0.,),
-                 dynamic_range_high=(1.,),
-                 min_amplitude=-48.,
-                 tempo=120.,
-                 mixing_coeffs=None,
-                 patterns=None,
-                 jam=None,
-                 audio_files=None,
-                 sample_rate=44100.,
-                 extended_duration_sec=None):
+                 dynamic_range_high=(1.,)):
         self.ts_num = ts_num
         self.ts_denom = ts_denom
         self.strat_level = strat_level
-        self.num_patterns = num_patterns
         self.metric_factor = metric_factor
         self.syncopate_factor = syncopate_factor
         self.density = density
@@ -1131,43 +1108,107 @@ class PatternGenerator(object):
         self.weight_minimum = weight_minimum
         self.dynamic_range_low = dynamic_range_low
         self.dynamic_range_high = dynamic_range_high
-        self.min_amplitude = min_amplitude
-        self.tempo = tempo
-        self.mixing_coeffs = mixing_coeffs
-        self.patterns = patterns
-        self.jam = jam
-        self.audio_files = audio_files
-        self.sample_rate = sample_rate
-        self.extended_duration_sec = extended_duration_sec
 
-        self._extend_default_value_list('self.metric_factor')
-        self._extend_default_value_list('self.syncopate_factor')
-        self._extend_default_value_list('self.density')
-        self._extend_default_value_list('self.event_var')
-        self._extend_default_value_list('self.sync_var')
-        self._extend_default_value_list('self.threshold')
-        self._extend_default_value_list('self.weight_minimum')
-        self._extend_default_value_list('self.dynamic_range_low')
-        self._extend_default_value_list('self.dynamic_range_high')
+        self._min_amplitude = -48.
+        self._tempo = 120.
+        self._sample_rate = 44100.
+        self._mixing_coeffs = None
+        self._patterns = None
+        self._audio_files = None
 
-        self.num_pulses = [0, ] * self.num_patterns
-        self.num_pulses_per_beat = [0, ] * self.num_patterns
+        self._jam = None
 
-        if self.patterns is not None:
-            self.num_pulses = [len(patt['rhythm_pattern']) for patt in self.patterns]
-            self.num_pulses_per_beat = [(n // self.ts_num) for n in self.num_pulses]
+    def _initialize_default_lists(self, num_patterns):
+        self._extend_default_value_list('self.metric_factor', num_patterns)
+        self._extend_default_value_list('self.syncopate_factor', num_patterns)
+        self._extend_default_value_list('self.density', num_patterns)
+        self._extend_default_value_list('self.event_var', num_patterns)
+        self._extend_default_value_list('self.sync_var', num_patterns)
+        self._extend_default_value_list('self.threshold', num_patterns)
+        self._extend_default_value_list('self.weight_minimum', num_patterns)
+        self._extend_default_value_list('self.dynamic_range_low', num_patterns)
+        self._extend_default_value_list('self.dynamic_range_high', num_patterns)
 
-        if self.mixing_coeffs is None:
-            self.mixing_coeffs = np.ones(self.num_patterns) / self.num_patterns
+    @property
+    def num_patterns(self):
+        return len(self.patterns)
 
-    @classmethod
-    def from_jams(cls, jams_file_path):
+    @property
+    def num_pulses_per_measure(self):
+        return [len(patt['rhythm_pattern']) for patt in self.patterns]
+
+    @property
+    def num_pulses_per_beat(self):
+        return [(n // self.ts_num) for n in self.num_pulses_per_measure]
+
+    @property
+    def min_amplitude(self):
+        """
+        The minimum amplitude of an onset in dB. Read-only. Default is -48.
+        """
+        return self._min_amplitude
+
+    @property
+    def tempo(self):
+        """
+        The tempo which should be used during synthesis. Read-only. Default is 120.
+        """
+        return self._tempo
+
+    @property
+    def sample_rate(self):
+        """
+        Sampling rate. Read-only. Default is 44100.
+        """
+        return self._sample_rate
+
+    @property
+    def mixing_coeffs(self):
+        """
+        Mixing coefficients that determine the relative level for each synthesized pattern. Read-only.
+        Default is [1./num_patterns, 1./num_pattern, ... ].
+        """
+        if self._mixing_coeffs is None:
+            return np.ones(self.num_patterns) / self.num_patterns
+        else:
+            return self._mixing_coeffs
+
+    @property
+    def patterns(self):
+        """
+        The generated patterns. Can also be based in at initialization time (e.g., if created from a JAMS file)
+        Read-only. Default is None.
+        """
+        return self._patterns
+
+    @property
+    def audio_files(self):
+        """
+        The audio files used to synthesized the patterns in their respective order by pattern.
+        Read-only. Default is None.
+        """
+        return self._audio_files
+
+    @property
+    def jam(self):
+        """
+        The JAMS annotations for the current pattern. Read-only. Default is None.
+        """
+        return self._jam
+
+    @property
+    def duration(self):
+        return self.jam.file_metadata.duration
+
+    @staticmethod
+    def from_jams(jams_file_path):
         """
         Load a pattern from a JAMS file and instantiate the RhythmSynthesizer
 
         Parameters
         ----------
-        jams_file
+        jams_file_path : str
+            Path to jams file
 
         Returns
         -------
@@ -1210,7 +1251,6 @@ class PatternGenerator(object):
 
         pattern_genr = PatternGenerator(ts_num=ts_num,
                                         ts_denom=ts_denom,
-                                        num_patterns=num_patterns,
                                         strat_level=strat_level,
                                         metric_factor=metric_factor,
                                         syncopate_factor=syncopate_factor,
@@ -1218,21 +1258,22 @@ class PatternGenerator(object):
                                         threshold=threshold,
                                         weight_minimum=weight_minimum,
                                         dynamic_range_low=dynamic_range_low,
-                                        dynamic_range_high=dynamic_range_high,
-                                        min_amplitude=min_amplitude,
-                                        tempo=tempo,
-                                        sample_rate=sample_rate,
-                                        jam=jam,
-                                        mixing_coeffs=mixing_coeffs,
-                                        patterns=patterns,
-                                        audio_files=audio_files)
+                                        dynamic_range_high=dynamic_range_high)
+
+        pattern_genr._min_amplitude = min_amplitude
+        pattern_genr._tempo = tempo
+        pattern_genr._sample_rate = sample_rate
+        pattern_genr._jam = jam
+        pattern_genr._mixing_coeffs = mixing_coeffs
+        pattern_genr._patterns = patterns
+        pattern_genr._audio_files = audio_files
 
         return pattern_genr
 
-    def _extend_default_value_list(self, attribute):
-        if len(eval(attribute)) < self.num_patterns:
+    def _extend_default_value_list(self, attribute, num_patterns):
+        if len(eval(attribute)) < num_patterns:
             print('Using default `{}`'.format(attribute))
-            exec '%s *= self.num_patterns' % attribute
+            exec '%s *= num_patterns' % attribute
 
     def _generate_mono_pattern(self, idx):
         """
@@ -1242,17 +1283,18 @@ class PatternGenerator(object):
         -------
         output : dict
             'beat_pattern' : np.array
-                Length of self.num_pulses, where each non-zero value denotes an onset and the weight of that beat.
+                Length of self.num_pulses_per_measure, where each non-zero value denotes an onset and the weight of
+                that beat.
             'beat_probability' : np.array
-                Length of self.num_pulses, where each value is the probability used to calculate if the beat has an
-                onset.
+                Length of self.num_pulses_per_measure, where each value is the probability used to calculate if the
+                beat has an onset.
             'sync_pattern' : np.array
-                Length of self.num_pulses, where each element can be 0 or 1. 1 denotes whether that beat is syncopated,
-                anticipating the next beat.
+                Length of self.num_pulses_per_measure, where each element can be 0 or 1. 1 denotes whether that beat is
+                syncopated, anticipating the next beat.
             'density' : float
                 The average beat_probability.
             'amp_pattern' : np.array
-                Length of self.num_pulses, where each value represents the log-scaled amplitude of the beat.
+                Length of self.num_pulses_per_measure, where each value represents the log-scaled amplitude of the beat.
             'rhythm_pattern' : np.array
                 This what we are most concerned about. It is the combination of the beat_pattern and amp_pattern. So,
                 a non-zero value means there is an onset, and the value represents the log-scaled amplitude of the
@@ -1264,8 +1306,7 @@ class PatternGenerator(object):
         density_b = min(max(self.density[idx] / 0.15, 0.), 1.)
         stratification = stratify(self.ts_num, self.ts_denom, self.strat_level[idx])
         weights = calc_weights(stratification, density_a)[0] * density_b
-        self.num_pulses[idx] = weights.shape[0]
-        self.num_pulses_per_beat[idx] = self.num_pulses[idx] // self.ts_num
+        num_pulses_per_measure = weights.shape[0]
 
         # the sequencer generates the rhythmic pattern for a measure given our parameters
         sequencer = Sequencer(weights,
@@ -1282,10 +1323,11 @@ class PatternGenerator(object):
         # base amplitude weights are calculated independently of the other metric weights controlled by density
         amp_weights = calc_weights(stratification, 0.5)[0]
         # when it is a syncopated / anticipatory pulse, use the amplitude weight from the beat it is anticipating
-        emphasis_map = (output['sync_pattern'] + np.arange(self.num_pulses[idx])) % self.num_pulses[idx]
+        emphasis_map = (output['sync_pattern'] +
+                        np.arange(num_pulses_per_measure)) % num_pulses_per_measure
 
-        amp_idxs = np.zeros(self.num_pulses[idx], dtype=int)
-        for i in range(self.num_pulses[idx]):
+        amp_idxs = np.zeros(num_pulses_per_measure, dtype=int)
+        for i in range(num_pulses_per_measure):
             if random.random() > (1.0 - self.metric_factor[idx]):
                 amp_idxs[i] = np.where(weights == np.percentile(weights,
                                                                 random.random() * 100, interpolation='nearest'))[0][0]
@@ -1302,7 +1344,7 @@ class PatternGenerator(object):
 
         return output
 
-    def generate_pattern(self):
+    def generate_pattern(self, num_patterns):
         """
         Create the polyphonic rhythm pattern
 
@@ -1311,42 +1353,160 @@ class PatternGenerator(object):
         patterns : list[dict]
             List of dicts of generated pattern arrays
         """
-        self.patterns = []
-        for i in range(self.num_patterns):
-            self.patterns.append(self._generate_mono_pattern(i))
-        return self.patterns
+        self._initialize_default_lists(num_patterns)
+
+        self._patterns = []
+        for i in range(num_patterns):
+            self._patterns.append(self._generate_mono_pattern(i))
+
+        # if a jam exists, it is now invalid
+        self._jam = None
+
+    def generate_jam(self,
+                     output_jams_file=None,
+                     audio_files=None,
+                     mixing_coeffs=None,
+                     tempo=None,
+                     sample_rate=None,
+                     min_amplitude=None,
+                     duration_sec=None):
+        """
+        Parameters
+        ----------
+        output_jams_file : str
+            If not None, write jams file to `output_jams_file`.
+        audio_files : list[str]
+            A list of the audio_files to use for rendering the rhythm patterns. These should be ordered according to the
+            pattern (e.g., if the patterns were constructed to be from low frequency to high frequency, a bass drum
+            might be first in the list). If not None, overwrite self.audio_files. Default is None.
+        mixing_coeffs : np.array
+            The coefficients specifying the mixing levels for the patterns. If not None, overwrite self.mixing_coeffs.
+            Default is None.
+        tempo : float
+            Tempo for rendering. If not None, overwrite self.tempo for rendering. Default is None.
+        sample_rate : float
+            Sampling rate of output. If not None, overwrite self.sample_rate. Default is None.
+        min_amplitude : float
+            The minimum amplitude to render for the softest sound above 0 in log amplitude. If not None, overwrite
+            self.min_amplitude. Default is None.
+        duration_sec : float
+            If not None, extend the rhythm pattern to the target duration. Default is None.
+
+        Returns
+        -------
+        jam : jams.JAM
+
+        """
+        if self.patterns is None:
+            raise PyrhythmicatorError('There are no patterns. Call `PatternGenerator.generate_pattern` to '
+                                      'generate patterns')
+
+        if mixing_coeffs is not None:
+            self._mixing_coeffs = mixing_coeffs
+
+        if audio_files is not None:
+            self._audio_files = audio_files
+            assert (len(self.audio_files) == self.num_patterns)
+
+        if tempo is not None:
+            self._tempo = tempo
+
+        if sample_rate is not None:
+            self._sample_rate = sample_rate
+
+        if min_amplitude is not None:
+            self._min_amplitude = min_amplitude
+
+        # calculate length of a pulse in samples given tempo and sample rate for first pattern
+        (pulse_length_sec,
+         pulse_length_samples,
+         bar_length_sec,
+         bar_length_samples) = calc_metric_durations(self.strat_level[0],
+                                                     self.num_pulses_per_measure[0],
+                                                     self.tempo,
+                                                     self.sample_rate)
+
+        # make JAM structure
+        jam = jams.JAMS()
+        jam.file_metadata.duration = bar_length_samples / float(self.sample_rate)
+        jam.sandbox.sample_rate = self.sample_rate
+
+        # write beat positions to jams
+        beat_ann = jams.Annotation(namespace='beat', time=0, duration=jam.file_metadata.duration)
+        beat_ann.annotation_metadata = jams.AnnotationMetadata(data_source='generative program')
+        for i in range(self.ts_num):
+            beat_ann.append(time=i * self.num_pulses_per_beat[0] * pulse_length_sec,
+                            duration=0.0,
+                            value=i)
+        jam.annotations.append(beat_ann)
+
+        # write tempo to jams
+        tempo_ann = jams.Annotation(namespace='tempo', time=0, duration=jam.file_metadata.duration)
+        tempo_ann.append(time=0, duration=jam.file_metadata.duration, value=self.tempo, confidence=1.0)
+        jam.annotations.append(tempo_ann)
+
+        # write onsets for each rhythm pattern
+        for i in range(len(self.patterns)):
+            onsets_ann = jams.Annotation(namespace='onset', time=0, duration=jam.file_metadata.duration)
+            onsets_ann.annotation_metadata = jams.AnnotationMetadata(data_source='generative program')
+            onsets_ann.sandbox = jams.Sandbox(pattern_index=i,
+                                              audio_source=self.audio_files[i],
+                                              time_signature=(self.ts_num, self.ts_denom),
+                                              strat_level=self.strat_level[i],
+                                              metric_factor=self.metric_factor[i],
+                                              syncopate_factor=self.syncopate_factor[i],
+                                              density=self.density[i],
+                                              threshold=self.threshold[i],
+                                              weight_minimum=self.weight_minimum[i],
+                                              dynamic_range=(self.dynamic_range_low[i], self.dynamic_range_high[i]),
+                                              min_amplitude=self.min_amplitude,
+                                              mixing_coeff=self.mixing_coeffs[i],
+                                              patterns=_dict_of_array_to_dict_of_list(self.patterns[i]))
+
+            # calculate length of a pulse in samples given tempo and sample rate for current pattern
+            (pulse_length_sec,
+             pulse_length_samples,
+             bar_length_sec,
+             bar_length_samples) = calc_metric_durations(self.strat_level[i],
+                                                         self.num_pulses_per_measure[i],
+                                                         self.tempo,
+                                                         self.sample_rate)
+
+            # log scale the amplitude signal from self.min_amplitude to 0 dB
+            rhythm_pattern_linear = log_to_linear_amp(self.patterns[i]['rhythm_pattern'], (self.min_amplitude, 0.))
+
+            # write onsets
+            for j in range(self.num_pulses_per_measure[i]):
+                start_idx = int(round(j * pulse_length_samples))
+                if rhythm_pattern_linear[j] > 0:
+                    onsets_ann.append(time=start_idx / float(self.sample_rate),
+                                      value=rhythm_pattern_linear[j],
+                                      duration=0)
+
+            jam.annotations.append(onsets_ann)
+
+        # extend and shift patterns
+        if duration_sec is not None:
+            if duration_sec < jam.file_metadata.duration:
+                print('Argument `duration_sec` is less than 1 bar and will not be used.')
+            jam = self._extend_and_shift_patterns(jam, duration_sec)
+
+        self._jam = jam
+        if output_jams_file is not None:
+            jam.save(output_jams_file)
 
     def synthesize(self,
                    output_file,
-                   audio_files=None,
-                   mixing_coeffs=None,
-                   tempo=None,
-                   sample_rate=44100.,
-                   write_jams=False,
-                   extended_duration_sec=None):
+                   **kwargs):
         """
-        Synthesize the patterns in self.patterns (create_poly_patterns must be called first) using the files in
-        `audio_files`, `tempo`, and the `mixing_coeffs`. The resultant files will be written to `output_file`.
+        Synthesize the patterns from self.jam. If self.jam does not exist, pass in the arguments to `generate_jam`.
 
         Parameters
         ----------
         output_file : str
             The path where the rendered and mixed output signal will be written
-        audio_files : list[str]
-            A list of the audio_files to use for rendering the rhythm patterns. These should be ordered according to the
-            pattern (e.g., if the patterns were constructed to be from low frequency to high frequency, a bass drum
-            might be first in the list)
-            If None, use self.audio_files
-        mixing_coeffs : np.array
-            The coefficients specifying the mixing levels for the patterns. If None, use self.mixing_coeffs
-        tempo : float
-            Tempo for rendering. If None, use self.tempo.
-        sample_rate : float
-            If None, use self.sample_rate
-        write_jams : bool
-            Write the onsets and other generating parameters into JAMS file. Default is False.
-        extended_duration_sec : float
-            If not None, extend the rhythm pattern to the target duration. Default is None.
+        kwargs : additional keyword arguments
+            Additional keyword arguments to pass to `pyrhythmicator.PatternGenerator.generate_jam` if self.jam is None.
 
         Returns
         -------
@@ -1354,140 +1514,66 @@ class PatternGenerator(object):
             The mixed output_signal
         unmixed_rhythm_audio: np.array
             An MxN array where M is the number of rhythm patterns and N is the length of the measure in samples
+
+        See Also
+        --------
+        pyrhythmicator.PatternGenerator.generate_jam
         """
-        assert(len(self.patterns) == self.num_patterns)
+        if self.jam is None or len(kwargs) > 0:
+            self.generate_jam(**kwargs)
 
-        if mixing_coeffs is None:
-            mixing_coeffs = self.mixing_coeffs
+        onset_anns = self.jam.search(namespace='onset')
 
-        if audio_files is None:
-            audio_files = self.audio_files
+        unmixed_rhythm_audio = np.zeros([self.num_patterns, int(np.ceil(self.duration * self.sample_rate))])
 
-        if tempo is None:
-            tempo = self.tempo
-
-        if sample_rate is None:
-            sample_rate = self.sample_rate
-
-        assert(len(audio_files) == self.num_patterns)
-
-        # calculate length of a pulse in samples given tempo and sample rate for first pattern
-        (pulse_length_sec,
-         pulse_length_samples,
-         bar_length_sec,
-         bar_length_samples) = calc_metric_durations(self.strat_level[0], self.num_pulses[0], tempo, sample_rate)
-        unmixed_rhythm_audio = np.zeros([self.num_patterns, bar_length_samples])
-
-        if write_jams:
-            # make JAM structure
-            jam = jams.JAMS()
-            jam.file_metadata.duration = bar_length_samples / float(sample_rate)
-            jam.sandbox.sample_rate = sample_rate
-
-            # write beat positions to jams
-            beat_ann = jams.Annotation(namespace='beat', time=0, duration=jam.file_metadata.duration)
-            beat_ann.annotation_metadata = jams.AnnotationMetadata(data_source='generative program')
-            for i in range(self.ts_num):
-                beat_ann.append(time=i * self.num_pulses_per_beat[0] * pulse_length_sec,
-                                duration=0.0,
-                                value=i)
-            jam.annotations.append(beat_ann)
-
-            # write tempo to jams
-            tempo_ann = jams.Annotation(namespace='tempo', time=0, duration=jam.file_metadata.duration)
-            tempo_ann.append(time=0, duration=jam.file_metadata.duration, value=tempo, confidence=1.0)
-            jam.annotations.append(tempo_ann)
-
-        for i in range(len(self.patterns)):
-            if write_jams:
-                onsets_ann = jams.Annotation(namespace='onset', time=0, duration=jam.file_metadata.duration)
-                onsets_ann.annotation_metadata = jams.AnnotationMetadata(data_source='generative program')
-                onsets_ann.sandbox = jams.Sandbox(pattern_index=i,
-                                                  audio_source=audio_files[i],
-                                                  time_signature=(self.ts_num, self.ts_denom),
-                                                  strat_level=self.strat_level[i],
-                                                  metric_factor=self.metric_factor[i],
-                                                  syncopate_factor=self.syncopate_factor[i],
-                                                  density=self.density[i],
-                                                  threshold=self.threshold[i],
-                                                  weight_minimum=self.weight_minimum[i],
-                                                  dynamic_range=(self.dynamic_range_low[i], self.dynamic_range_high[i]),
-                                                  min_amplitude=self.min_amplitude,
-                                                  mixing_coeff=mixing_coeffs[i],
-                                                  patterns=_dict_of_array_to_dict_of_list(self.patterns[i]))
-
-            # calculate length of a pulse in samples given tempo and sample rate for current pattern
-            (pulse_length_sec,
-             pulse_length_samples,
-             bar_length_sec,
-             bar_length_samples) = calc_metric_durations(self.strat_level[i], self.num_pulses[i], tempo, sample_rate)
-            assert(unmixed_rhythm_audio.shape[1] == bar_length_samples)
-
+        for k, onset_ann in enumerate(onset_anns):
             # load audio file
-            sample, _ = librosa.load(audio_files[i], sample_rate, mono=True)
+            sample, _ = librosa.load(self.audio_files[k], self.sample_rate, mono=True)
             sample_length = sample.shape[0]
 
-            # log scale the amplitude signal from self.min_amplitude to 0 dB
-            rhythm_pattern_linear = log_to_linear_amp(self.patterns[i]['rhythm_pattern'], (self.min_amplitude, 0.))
+            # render samples at onsets
+            for j in range(len(onset_ann.data.index)):
+                try:
+                    start_idx = int(np.round(onset_ann.data.ix[j, 'time'].total_seconds() * self.sample_rate))
+                    stop_idx = min(start_idx + sample_length, unmixed_rhythm_audio.shape[1]-1)
+                    unmixed_rhythm_audio[k, start_idx:stop_idx] = onset_ann.data.ix[j, 'value'] * sample[:(stop_idx -
+                                                                                                           start_idx)]
+                except Exception as e:
+                    import pdb; pdb.set_trace()
 
-            # "upsample" signal
-            for j in range(self.num_pulses[i]):
-                start_idx = int(round(j * pulse_length_samples))
-                stop_idx = min(start_idx + sample_length, bar_length_samples-1)
-                if rhythm_pattern_linear[j] > 0:
-                    unmixed_rhythm_audio[i, start_idx:stop_idx] = rhythm_pattern_linear[j] * \
-                                                                  sample[:(stop_idx - start_idx)]
-                    if write_jams:
-                        onsets_ann.append(time=start_idx / float(sample_rate),
-                                          value=rhythm_pattern_linear[j],
-                                          duration=0)
+        rhythm_audio = np.dot(self.mixing_coeffs, unmixed_rhythm_audio)
 
-            if write_jams:
-                jam.annotations.append(onsets_ann)
-
-        rhythm_audio = np.dot(mixing_coeffs, unmixed_rhythm_audio)
-
-        if extended_duration_sec is not None:
-            rhythm_audio, jam = self._extend_and_shift_patterns(rhythm_audio, extended_duration_sec, jam=jam)
-
-        _write_wav(output_file, rhythm_audio, sample_rate)
-
-        if write_jams:
-            self.jam = jam
-            jam.save(os.path.splitext(output_file)[0] + '.jams')
+        _write_wav(output_file, rhythm_audio, self.sample_rate)
 
         return rhythm_audio, unmixed_rhythm_audio
 
     def _extend_and_shift_patterns(self,
-                                   x,
+                                   jam,
                                    extended_duration_sec=None,
                                    duration_distribution=scipy.stats.truncnorm(-2, 2, 30, 10),
-                                   shift=True,
-                                   jam=None):
+                                   shift=True,):
         """
         Repeat the measure until its at least chosen from drawing from `duration_distribution`. If `shift` is True,
         then also randomly offset the start time.
 
         Parameters
         ----------
-        x : np.array
-            The rendered rhythm audio
-        extended_duration_sec : float
-            The desired duration in seconds. If None, sample from duration_distribution
-        duration_distribution : scipy.stats.rv_continuous
-        shift : bool
         jam : jams.JAM
+        extended_duration_sec : float
+            The desired duration in seconds. If None, sample from duration_distribution. Default is None.
+        duration_distribution : scipy.stats.rv_continuous
+            Distribution from which to draw the duration from if `extended_duration_sec` is None.
+            Default is scipy.stats.truncnorm(-2, 2, 30, 10)
+        shift : bool
+            Randomly shift the signal by an offset. Default is True.
 
         Returns
         -------
-        y : np.array
-        jam : jams.JAM()
+        jam : jams.JAM
+            Updated jam
         """
         if extended_duration_sec is None:
-            if self.extended_duration_sec is None:
-                extended_duration_sec = duration_distribution.rvs()
-            else:
-                extended_duration_sec = self.extended_duration_sec
+            extended_duration_sec = duration_distribution.rvs()
 
         extended_duration_samples = extended_duration_sec * self.sample_rate
 
@@ -1495,35 +1581,28 @@ class PatternGenerator(object):
          pulse_length_samples,
          bar_length_sec,
          bar_length_samples) = calc_metric_durations(self.strat_level[0],
-                                                     self.num_pulses[0], self.tempo, self.sample_rate)
+                                                     self.num_pulses_per_measure[0], self.tempo, self.sample_rate)
 
         repetitions = int(np.ceil(extended_duration_samples / bar_length_samples))
 
-        y = np.tile(x, [repetitions])
-
         # repeat
-        if jam is not None:
-            for ann in jam.annotations:
-                if ann.namespace in ['onset', 'beat']:
-                    _repeat_annotations(ann, repetitions)
+        for ann in jam.annotations:
+            if ann.namespace in ['onset', 'beat']:
+                _repeat_annotations(ann, repetitions)
 
         # shift
         if shift:
-            shift_samples = np.random.randint(y.shape[0])
-            y = np.roll(y, shift_samples)
+            shift_samples = np.random.randint(bar_length_samples * repetitions)
 
-            if jam is not None:
-                for ann in jam.annotations:
-                    if ann.namespace in ['onset', 'beat']:
-                        _rotate_annotations(ann, shift_samples / self.sample_rate)
-
-        # trim
-        y = y[:extended_duration_samples]
-        if jam is not None:
             for ann in jam.annotations:
                 if ann.namespace in ['onset', 'beat']:
-                    _trim_annotations(ann, 0, extended_duration_sec)
-            jam.search(namespace='tempo')[0].duration = extended_duration_sec
+                    _rotate_annotations(ann, shift_samples / self.sample_rate)
 
-        return y, jam
+        # trim
+        for ann in jam.annotations:
+            if ann.namespace in ['onset', 'beat']:
+                _trim_annotations(ann, 0, extended_duration_sec)
+        jam.search(namespace='tempo')[0].duration = extended_duration_sec
 
+        jam.file_metadata.duration = extended_duration_sec
+        return jam
