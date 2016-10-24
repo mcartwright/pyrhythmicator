@@ -361,6 +361,32 @@ def _validate_strat_level(ts_num, ts_denom, strat_num, strat_denom):
     return isvalid
 
 
+ALL_STRATS = [str(v) + d for v in (2 ** np.arange(8)).tolist() for d in ['n', 'nd']]
+
+
+def random_strat_level(ts_num, ts_denom):
+    """
+    Return a random valid stratification level given `ts_num` and `ts_denom`
+
+    Parameters
+    ----------
+    ts_num : int
+        Time-signature numerator
+    ts_denom : int
+        Time-signature denominator
+
+    Returns
+    -------
+    str
+    """
+    possible_strats = [sl for sl in ALL_STRATS
+                       if _validate_strat_level(ts_num,
+                                                ts_denom,
+                                                *strat_level_to_note_dur_frac(*parse_strat_level(sl))) and
+                       len(stratify(ts_num, ts_denom, sl)) > 0]
+    return random.choice(possible_strats)
+
+
 def _validate_meter(num, denom):
     """
     Make sure both ints and that denominator is 2^n
