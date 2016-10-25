@@ -364,6 +364,27 @@ def _validate_strat_level(ts_num, ts_denom, strat_num, strat_denom):
 ALL_STRATS = [str(v) + d for v in (2 ** np.arange(8)).tolist() for d in ['n', 'nd']]
 
 
+def get_valid_strat_levels(ts_num, ts_denom):
+    """
+    Return the valid possible strat levels
+
+    Parameters
+    ----------
+    ts_num
+    ts_denom
+
+    Returns
+    -------
+    possible_strats : list[str]
+    """
+    possible_strats = [sl for sl in ALL_STRATS
+                       if _validate_strat_level(ts_num,
+                                                ts_denom,
+                                                *strat_level_to_note_dur_frac(*parse_strat_level(sl))) and
+                       len(stratify(ts_num, ts_denom, sl)) > 0]
+    return possible_strats
+
+
 def random_strat_level(ts_num, ts_denom):
     """
     Return a random valid stratification level given `ts_num` and `ts_denom`
@@ -379,11 +400,7 @@ def random_strat_level(ts_num, ts_denom):
     -------
     str
     """
-    possible_strats = [sl for sl in ALL_STRATS
-                       if _validate_strat_level(ts_num,
-                                                ts_denom,
-                                                *strat_level_to_note_dur_frac(*parse_strat_level(sl))) and
-                       len(stratify(ts_num, ts_denom, sl)) > 0]
+    possible_strats = get_valid_strat_levels(ts_num, ts_denom)
     return random.choice(possible_strats)
 
 
@@ -1383,7 +1400,12 @@ class PatternGenerator(object):
 
         self._patterns = []
         for i in range(num_patterns):
-            self._patterns.append(self._generate_mono_pattern(i))
+            while True:
+                pat = self._generate_mono_pattern(i)
+                # make sure that there is at least one onset!
+                if np.sum(pat['rhythm_pattern']) > 0:
+                    self._patterns.append(pat)
+                    break
 
         # if a jam exists, it is now invalid
         self._jam = None
