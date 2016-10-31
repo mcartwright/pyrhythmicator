@@ -1417,7 +1417,9 @@ class PatternGenerator(object):
                      tempo=None,
                      sample_rate=None,
                      min_amplitude=None,
-                     duration_sec=None):
+                     duration_sec=None,
+                     additional_onset_sandbox_info=None,
+                     additional_global_sandbox_info=None):
         """
         Parameters
         ----------
@@ -1439,6 +1441,11 @@ class PatternGenerator(object):
             self.min_amplitude. Default is None.
         duration_sec : float
             If not None, extend the rhythm pattern to the target duration. Default is None.
+        additional_onset_sandbox_info : list[dict]
+            If not None, then save this additional info in the sandbox for the corresponding onset annotation.
+            Default is None.
+        additional_global_sandbox_info: dict
+            If not None, then save this additional info in the top-level sandbox of the JAM. Default is None.
 
         Returns
         -------
@@ -1478,6 +1485,8 @@ class PatternGenerator(object):
         jam = jams.JAMS()
         jam.file_metadata.duration = bar_length_samples / float(self.sample_rate)
         jam.sandbox.sample_rate = self.sample_rate
+        if additional_global_sandbox_info is not None:
+            jam.sandbox.update(additional_global_sandbox_info)
 
         # write beat positions to jams
         beat_ann = jams.Annotation(namespace='beat', time=0, duration=jam.file_metadata.duration)
@@ -1510,6 +1519,8 @@ class PatternGenerator(object):
                                               min_amplitude=self.min_amplitude,
                                               mixing_coeff=self.mixing_coeffs[i],
                                               patterns=_dict_of_array_to_dict_of_list(self.patterns[i]))
+            if additional_onset_sandbox_info is not None:
+                onsets_ann.sandbox.update(additional_onset_sandbox_info[i])
 
             # calculate length of a pulse in samples given tempo and sample rate for current pattern
             (pulse_length_sec,
