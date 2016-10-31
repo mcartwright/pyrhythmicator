@@ -1076,7 +1076,7 @@ class Sequencer(object):
         output = {'beat_pattern': self.pattern,
                   'beat_probability': self.outputs,
                   'sync_pattern': self.sync_direction,
-                  'density': self.orig_total_prob / self.num_pulses}
+                  'avg_beat_prob': self.orig_total_prob / self.num_pulses}
         return output
 
 
