@@ -1260,8 +1260,8 @@ class PatternGenerator(object):
         jam = jams.load(jams_file_path)
 
         pattern1 = jam.search(pattern_index=0)[0]
-        ts_num = pattern1.sandbox.time_signature[0]
-        ts_denom = pattern1.sandbox.time_signature[1]
+        ts_num = jam.sandbox.time_signature[0]
+        ts_denom = jam.sandbox.time_signature[1]
         num_patterns = len(jam.search(namespace='onset'))
         tempo = jam.search(namespace='tempo')[0].data.value[0]
         sample_rate = jam.sandbox.sample_rate
@@ -1485,6 +1485,7 @@ class PatternGenerator(object):
         jam = jams.JAMS()
         jam.file_metadata.duration = bar_length_samples / float(self.sample_rate)
         jam.sandbox.sample_rate = self.sample_rate
+        jam.sandbox.time_signature = (self.ts_num, self.ts_denom)
         if additional_global_sandbox_info is not None:
             jam.sandbox.update(additional_global_sandbox_info)
 
@@ -1508,7 +1509,6 @@ class PatternGenerator(object):
             onsets_ann.annotation_metadata = jams.AnnotationMetadata(data_source='generative program')
             onsets_ann.sandbox = jams.Sandbox(pattern_index=i,
                                               audio_source=self.audio_files[i],
-                                              time_signature=(self.ts_num, self.ts_denom),
                                               strat_level=self.strat_level[i],
                                               metric_factor=self.metric_factor[i],
                                               syncopate_factor=self.syncopate_factor[i],
