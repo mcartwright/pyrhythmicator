@@ -438,6 +438,42 @@ def _validate_meter(num, denom):
     return isvalid
 
 
+def calc_num_pulses(ts_num, ts_denom, strat_level):
+    """
+    Calculate the number of pulses per measure given a time signature and stratification level
+
+    Parameters
+    ----------
+    ts_num : int
+        Numerator of time signature
+    ts_denom : int
+        Denominator of time signature
+    strat_level : str
+        Stratification level, e.g. 1n = whole note, 2n = half note, 1nd = dotted whole note, etc.
+        (valid values up to 128)
+
+    Returns
+    -------
+    num_pulses : int
+        The number of pulses per measure
+    """
+    # parse metric
+    strat_divisor, strat_dotted = parse_strat_level(strat_level)
+    strat_num, strat_denom = strat_level_to_note_dur_frac(strat_divisor, strat_dotted)
+
+    # check validity
+    if not _validate_meter(ts_num, ts_denom):
+        raise PyrhythmicatorError('Invalid time signature')
+
+    if not _validate_strat_level(ts_num, ts_denom, strat_num, strat_denom):
+        raise PyrhythmicatorError('Invalid stratification level (`strat_level`)')
+
+    # num pulses
+    num_pulses = (ts_num * strat_denom) // (strat_num * ts_denom)
+
+    return num_pulses
+
+
 def stratify(ts_num, ts_denom, strat_level):
     """
     Stratifies the meter into metrical levels
@@ -506,19 +542,7 @@ def stratify(ts_num, ts_denom, strat_level):
     >>> stratify(6, 8, '16n')
     [2, 3, 2]
     """
-    # parse metric
-    strat_divisor, strat_dotted = parse_strat_level(strat_level)
-    strat_num, strat_denom = strat_level_to_note_dur_frac(strat_divisor, strat_dotted)
-
-    # check validity
-    if not _validate_meter(ts_num, ts_denom):
-        raise PyrhythmicatorError('Invalid time signature')
-
-    if not _validate_strat_level(ts_num, ts_denom, strat_num, strat_denom):
-        raise PyrhythmicatorError('Invalid stratification level (`strat_level`)')
-
-    # num pulses
-    num_pulses = (ts_num * strat_denom) // (strat_num * ts_denom)
+    num_pulses = calc_num_pulses(ts_num, ts_denom, strat_level)
 
     # find prime factors
     prime_factors = _find_prime_factors(num_pulses)
