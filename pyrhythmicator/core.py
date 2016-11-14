@@ -1616,13 +1616,12 @@ class PatternGenerator(object):
 
             # render samples at onsets
             for j in range(len(onset_ann.data.index)):
-                try:
-                    start_idx = int(np.round(onset_ann.data.ix[j, 'time'].total_seconds() * self.sample_rate))
-                    stop_idx = min(start_idx + sample_length, unmixed_rhythm_audio.shape[1]-1)
-                    unmixed_rhythm_audio[k, start_idx:stop_idx] = onset_ann.data.ix[j, 'value'] * sample[:(stop_idx -
-                                                                                                           start_idx)]
-                except Exception as e:
-                    import pdb; pdb.set_trace()
+                start_idx = int(np.round(onset_ann.data.ix[j, 'time'].total_seconds() * self.sample_rate))
+                start_idx = min(start_idx, unmixed_rhythm_audio.shape[1]-1)
+                stop_idx = start_idx + sample_length
+                stop_idx = min(stop_idx, unmixed_rhythm_audio.shape[1]-1)
+                unmixed_rhythm_audio[k, start_idx:stop_idx] = onset_ann.data.ix[j, 'value'] * sample[:(stop_idx -
+                                                                                                       start_idx)]
 
         rhythm_audio = np.dot(self.mixing_coeffs, unmixed_rhythm_audio)
 
