@@ -1511,7 +1511,7 @@ class PatternGenerator(object):
         jam.sandbox.sample_rate = self.sample_rate
         jam.sandbox.time_signature = (self.ts_num, self.ts_denom)
         if additional_global_sandbox_info is not None:
-            jam.sandbox.update(additional_global_sandbox_info)
+            jam.sandbox.update(**additional_global_sandbox_info)
 
         # write beat positions to jams
         beat_ann = jams.Annotation(namespace='beat', time=0, duration=jam.file_metadata.duration)
@@ -1544,7 +1544,7 @@ class PatternGenerator(object):
                                               mixing_coeff=self.mixing_coeffs[i],
                                               patterns=_dict_of_array_to_dict_of_list(self.patterns[i]))
             if additional_onset_sandbox_info is not None:
-                onsets_ann.sandbox.update(additional_onset_sandbox_info[i])
+                onsets_ann.sandbox.update(**additional_onset_sandbox_info[i])
 
             # calculate length of a pulse in samples given tempo and sample rate for current pattern
             (pulse_length_sec,
