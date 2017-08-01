@@ -1410,9 +1410,17 @@ class PatternGenerator(object):
 
         return output
 
-    def generate_pattern(self, num_patterns):
+    def generate_pattern(self, num_patterns, one_onset_min=True):
         """
         Create the polyphonic rhythm pattern
+
+        Parameters
+        ----------
+        num_patterns : int
+            The number of patterns to synthesize
+        one_onset_min : bool
+            If True, then require each pattern to have at least one onset.
+            Default is True.
 
         Returns
         -------
@@ -1426,7 +1434,7 @@ class PatternGenerator(object):
             while True:
                 pat = self._generate_mono_pattern(i)
                 # make sure that there is at least one onset!
-                if np.sum(pat['rhythm_pattern']) > 0:
+                if not one_onset_min or np.sum(pat['rhythm_pattern']) > 0:
                     self._patterns.append(pat)
                     break
 
