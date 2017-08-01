@@ -11,27 +11,25 @@ import jams
 import librosa
 import numpy as np
 import pandas as pd
-import scipy.io.wavfile
+import soundfile as psf
 import scipy.stats
 
 from pyrhythmicator_exceptions import PyrhythmicatorError
 
 
-def _write_wav(path, y, sample_rate, norm=True, dtype='int16'):
+def _write_audio(path, y, sample_rate, norm=True):
     """
-    Write .wav file to disk.
+    Write audio file to disk.
 
     Parameters
     ----------
     path : str
-        File path to write wav file
+        File path to write audio file. Extension dictates format.
     y : np.array
         Audio signal array
-    sample_rate : float
+    sample_rate : int
     norm : bool
         Peak-normalize `y` before writing to disk.
-    dtype : str
-        This numpy array type will dictate what the sample format of the audio file is.
 
     Returns
     -------
@@ -39,7 +37,7 @@ def _write_wav(path, y, sample_rate, norm=True, dtype='int16'):
     """
     if norm:
         y /= np.max(np.abs(y))
-    scipy.io.wavfile.write(path, sample_rate, np.array((y * (np.iinfo(dtype).max - 1))).astype(dtype))
+    psf.write(path, y, int(sample_rate))
 
 
 def _dict_of_array_to_dict_of_list(d):
@@ -115,7 +113,8 @@ def sort_audio_by_centroid(audio_files, sample_rate=44100):
     print([audio_files[i] for i in np.argsort(centroids)])
 
 
-def list_audio_files_in_dir(directory, extensions=('.wav', '.mp3', '.aif', '.aiff'), prepend_path=False):
+def list_audio_files_in_dir(directory, extensions=('.wav', '.mp3', '.aif', '.aiff', '.flac'),
+                            prepend_path=False):
     """
     Populate a list with all of the audio files in a directory.
 
@@ -1587,7 +1586,7 @@ class PatternGenerator(object):
         Parameters
         ----------
         output_file : str
-            The path where the rendered and mixed output signal will be written
+            The path where the rendered and mixed output signal will be written. If None, no file will be written.
         kwargs : additional keyword arguments
             Additional keyword arguments to pass to `pyrhythmicator.PatternGenerator.generate_jam` if self.jam is None.
 
@@ -1625,7 +1624,8 @@ class PatternGenerator(object):
 
         rhythm_audio = np.dot(self.mixing_coeffs, unmixed_rhythm_audio)
 
-        _write_wav(output_file, rhythm_audio, self.sample_rate)
+        if output_file is not None:
+            _write_audio(output_file, rhythm_audio, self.sample_rate)
 
         return rhythm_audio, unmixed_rhythm_audio
 
